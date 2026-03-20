@@ -1,0 +1,90 @@
+TechConnect — Setup Instructions
+==================================
+
+STEP 1: Install Node.js
+  Download from https://nodejs.org (LTS version)
+
+STEP 2: Install dependencies
+  Open a terminal, cd into this folder, then run:
+    npm install
+
+STEP 3: Configure Firebase
+  a) Go to https://console.firebase.google.com
+  b) Create a new project (name it "TechConnect" or anything you like)
+  c) Enable Authentication:
+       - Click Authentication → Get Started → Sign-in method
+       - Enable "Email/Password"
+  d) Enable Firestore Database:
+       - Click Firestore Database → Create database
+       - Choose "Start in test mode" (fine for POC)
+  e) Enable Storage:
+       - Click Storage → Get Started → Start in test mode
+  f) Get your config:
+       - Click the gear icon → Project Settings → Your Apps
+       - Click the web icon (</>), register an app, copy the firebaseConfig object
+  g) Open src/config/firebase.js and replace the placeholder values with your real config
+
+STEP 4: Get a Google Maps API key (for the map screens)
+  a) Go to https://console.cloud.google.com
+  b) Create a project (or use the same Firebase project)
+  c) Enable "Maps SDK for Android" and "Maps SDK for iOS"
+  d) Create an API key under APIs & Services → Credentials
+  e) Add this key to app.json under expo.android.config.googleMaps.apiKey
+     and expo.ios.config.googleMapsApiKey
+
+STEP 5: Install Expo Go on your phone
+  - iOS: App Store → search "Expo Go"
+  - Android: Google Play → search "Expo Go"
+
+STEP 6: Start the app
+    npx expo start
+
+  Scan the QR code with:
+  - iPhone: use the Camera app
+  - Android: use the Expo Go app directly
+
+STEP 7: Test the full flow
+  1. Register as a Customer on one device/simulator
+  2. Register as a Mechanic on another device/simulator
+  3. Mechanic: go Online, set up profile
+  4. Customer: add vehicle, find mechanics, request service
+  5. Mechanic: accept the job, update status through to complete
+  6. Both sides: rate each other
+
+FIRESTORE SECURITY RULES (paste in Firebase Console → Firestore → Rules):
+----------------------------------------------------------------------
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth.uid == userId;
+    }
+    match /jobs/{jobId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null &&
+        (resource.data.customerId == request.auth.uid ||
+         resource.data.mechanicId == request.auth.uid ||
+         resource.data.mechanicId == null);
+    }
+    match /ratings/{ratingId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+    }
+  }
+}
+----------------------------------------------------------------------
+
+STORAGE SECURITY RULES (paste in Firebase Console → Storage → Rules):
+----------------------------------------------------------------------
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /profilePhotos/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+  }
+}
+----------------------------------------------------------------------

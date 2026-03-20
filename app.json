@@ -1,0 +1,65 @@
+{
+  "expo": {
+    "name": "TechConnect",
+    "slug": "techconnect",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a73e8"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.techconnect.app",
+      "config": {
+        "googleMapsApiKey": "AIzaSyAueF4K48WMdrEfXcUYtsXuQe0dw-IU-uI"
+      },
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "TechConnect needs your location to find nearby mechanics and track your job.",
+        "NSLocationAlwaysUsageDescription": "TechConnect needs your location to update your position for active jobs.",
+        "NSPhotoLibraryUsageDescription": "TechConnect needs access to your photos to upload a profile picture.",
+        "NSCameraUsageDescription": "TechConnect needs camera access to take a profile photo."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a73e8"
+      },
+      "package": "com.techconnect.app",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAueF4K48WMdrEfXcUYtsXuQe0dw-IU-uI"
+        }
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "CAMERA"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "TechConnect needs your location to find nearby mechanics and track active jobs."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "TechConnect needs photo access to upload a profile picture.",
+          "cameraPermission": "TechConnect needs camera access to take a profile photo."
+        }
+      ]
+    ]
+  }
+}
