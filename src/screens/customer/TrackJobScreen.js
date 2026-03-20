@@ -1,8 +1,14 @@
-import React, { useEffect, useState, useRef } from 'react';
+// TrackJobScreen.js — the customer's live job tracking screen.
+// Shows a map with the customer's pin and the mechanic's moving pin,
+// a colored status banner, job details, and a rating form when the job completes.
+// Everything updates in real time via a Firestore listener — no refresh needed.
+
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert,
   ActivityIndicator, SafeAreaView, ScrollView,
 } from 'react-native';
+// MapView renders an interactive map. Marker = a pin. Polyline = a line between points.
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { auth } from '../../config/firebase';
 import { subscribeToJob, JOB_STATUS } from '../../services/jobService';
@@ -12,19 +18,26 @@ import JobStatusBanner from '../../components/JobStatusBanner';
 import StarRating from '../../components/StarRating';
 
 export default function TrackJobScreen({ route, navigation }) {
+  // `jobId` was passed here via navigation.navigate('TrackJob', { jobId })
   const { jobId } = route.params;
-  const [job, setJob] = useState(null);
-  const [mechanicProfile, setMechanicProfile] = useState(null);
-  const [stars, setStars] = useState(0);
-  const [rated, setRated] = useState(false);
+
+  const [job, setJob] = useState(null);                     // Live job data from Firestore
+  const [mechanicProfile, setMechanicProfile] = useState(null); // Mechanic's name/info
+  const [stars, setStars] = useState(0);                    // Selected rating (1–5)
+  const [rated, setRated] = useState(false);                // True after rating is submitted
   const [submittingRating, setSubmittingRating] = useState(false);
   const uid = auth.currentUser?.uid;
 
+  // Subscribe to this job document in real time.
+  // Whenever the mechanic updates the status or their location, `setJob` fires
+  // and the screen automatically re-renders with fresh data.
   useEffect(() => {
     const unsub = subscribeToJob(jobId, setJob);
-    return unsub;
+    return unsub; // Unsubscribe when the customer leaves this screen
   }, [jobId]);
 
+  // Once we know the mechanic's ID (after they accept), fetch their profile once.
+  // !mechanicProfile prevents fetching multiple times if job updates keep arriving.
   useEffect(() => {
     if (job?.mechanicId && !mechanicProfile) {
       getCurrentUserProfile(job.mechanicId).then(setMechanicProfile);
@@ -55,10 +68,14 @@ export default function TrackJobScreen({ route, navigation }) {
     }
   }
 
+  // Show a spinner until the first Firestore snapshot arrives
   if (!job) {
     return <View style={styles.center}><ActivityIndicator size="large" color="#1a73e8" /></View>;
   }
 
+  // MapView needs a `region` object to set the initial view.
+  // We center on the customer's location with a zoom level set by latitudeDelta/longitudeDelta.
+  // Smaller delta = more zoomed in. 0.05 is roughly city-block level.
   const customerRegion = job.customerLocation
     ? {
         latitude: job.customerLocation.lat,
@@ -68,6 +85,8 @@ export default function TrackJobScreen({ route, navigation }) {
       }
     : null;
 
+  // Marker coordinates use { latitude, longitude } (MapView convention)
+  // while our stored data uses { lat, lng } — we convert here
   const mechanicCoord = job.mechanicCurrentLocation
     ? { latitude: job.mechanicCurrentLocation.lat, longitude: job.mechanicCurrentLocation.lng }
     : null;
@@ -82,22 +101,33 @@ export default function TrackJobScreen({ route, navigation }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.inner}>
         <Text style={styles.title}>Track Your Job</Text>
+
+        {/* Colored banner showing the current status */}
         <JobStatusBanner status={job.status} />
 
+        {/* Map — only shown if we have the customer's location */}
         {customerRegion && (
           <MapView style={styles.map} region={customerRegion}>
+            {/* Blue pin = customer's location */}
             {customerCoord && (
               <Marker coordinate={customerCoord} title="Your Location" pinColor="blue" />
             )}
+            {/* Green pin = mechanic's current location (updates every 10 seconds) */}
             {mechanicCoord && (
               <Marker coordinate={mechanicCoord} title={mechanicProfile?.name || 'Mechanic'} pinColor="green" />
             )}
+            {/* Blue line connecting mechanic to customer while en route */}
             {mechanicCoord && customerCoord && (
-              <Polyline coordinates={[mechanicCoord, customerCoord]} strokeColor="#1a73e8" strokeWidth={3} />
+              <Polyline
+                coordinates={[mechanicCoord, customerCoord]}
+                strokeColor="#1a73e8"
+                strokeWidth={3}
+              />
             )}
           </MapView>
         )}
 
+        {/* Job details card */}
         <View style={styles.detailsCard}>
           <Text style={styles.detailsTitle}>Job Details</Text>
           <Text style={styles.detailRow}>
@@ -116,9 +146,11 @@ export default function TrackJobScreen({ route, navigation }) {
           )}
         </View>
 
+        {/* Rating form — shown only when the job is complete and not yet rated */}
         {isComplete && !rated && (
           <View style={styles.ratingCard}>
             <Text style={styles.ratingTitle}>Rate your mechanic</Text>
+            {/* Interactive stars — onRate updates the `stars` state */}
             <StarRating rating={stars} onRate={setStars} size={38} />
             <TouchableOpacity
               style={[styles.rateBtn, submittingRating && styles.disabled]}
@@ -134,6 +166,7 @@ export default function TrackJobScreen({ route, navigation }) {
           </View>
         )}
 
+        {/* After rating is submitted, show a simple "go home" button */}
         {isComplete && rated && (
           <TouchableOpacity style={styles.homeBtn} onPress={() => navigation.navigate('CustomerHome')}>
             <Text style={styles.homeBtnText}>Back to Home</Text>
@@ -159,8 +192,7 @@ const styles = StyleSheet.create({
   detailRow: { fontSize: 14, color: '#444', marginBottom: 4 },
   detailKey: { fontWeight: '600', color: '#111' },
   ratingCard: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 20,
-    alignItems: 'center',
+    backgroundColor: '#fff', borderRadius: 12, padding: 20, alignItems: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.07, shadowRadius: 4, elevation: 2, marginBottom: 16,
   },
@@ -172,8 +204,7 @@ const styles = StyleSheet.create({
   rateBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   disabled: { opacity: 0.5 },
   homeBtn: {
-    backgroundColor: '#0f9d58', borderRadius: 10, paddingVertical: 14,
-    alignItems: 'center',
+    backgroundColor: '#0f9d58', borderRadius: 10, paddingVertical: 14, alignItems: 'center',
   },
   homeBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

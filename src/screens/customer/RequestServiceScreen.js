@@ -1,3 +1,7 @@
+// RequestServiceScreen.js — the form where a customer describes their issue
+// and submits a service request. Called after selecting a mechanic from the list.
+// Captures GPS location at the moment of submission so the mechanic knows where to go.
+
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
@@ -10,12 +14,17 @@ import { getCurrentLocation } from '../../services/locationService';
 import { createJob } from '../../services/jobService';
 
 export default function RequestServiceScreen({ navigation, route }) {
+  // `route.params` contains anything passed via navigation.navigate('RequestService', {...})
+  // In this case, the selected mechanic is passed from CustomerHomeScreen.
+  // The || {} fallback prevents a crash if params is undefined.
   const { mechanic } = route.params || {};
+
   const [profile, setProfile] = useState(null);
+  // Track which vehicle the customer wants serviced (index into their vehicles array)
   const [selectedVehicleIndex, setSelectedVehicleIndex] = useState(0);
   const [issueDescription, setIssueDescription] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);    // True while loading the profile
+  const [submitting, setSubmitting] = useState(false); // True while creating the job
 
   const uid = auth.currentUser?.uid;
 
@@ -36,17 +45,25 @@ export default function RequestServiceScreen({ navigation, route }) {
       Alert.alert('No vehicle', 'Please add a vehicle first.');
       return;
     }
+
     setSubmitting(true);
     try {
+      // Get the customer's current GPS coordinates right now (at submission time)
       const loc = await getCurrentLocation();
+
+      // Get the vehicle the customer selected from the picker
       const vehicleInfo = vehicles[selectedVehicleIndex];
+
+      // Create the job document in Firestore and get back its auto-generated ID
       const jobId = await createJob({
         customerId: uid,
         vehicleInfo,
         issueDescription: issueDescription.trim(),
-        customerLocation: loc,
-        preferredMechanicId: mechanic?.uid || null,
+        customerLocation: loc,               // { lat, lng } snapped at this moment
+        preferredMechanicId: mechanic?.uid || null, // The mechanic they tapped on
       });
+
+      // Navigate to the tracking screen and pass the new job's ID
       navigation.navigate('TrackJob', { jobId });
     } catch (e) {
       Alert.alert('Error', e.message);
@@ -65,17 +82,21 @@ export default function RequestServiceScreen({ navigation, route }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Request Service</Text>
+
+        {/* Show the mechanic's name if one was pre-selected from the list */}
         {mechanic && (
           <View style={styles.mechanicBadge}>
             <Text style={styles.mechanicBadgeText}>Requesting: {mechanic.name}</Text>
           </View>
         )}
 
+        {/* Vehicle picker — lets the customer choose which of their vehicles needs service */}
         <Text style={styles.label}>Select Vehicle</Text>
         {vehicles.length === 0 ? (
           <Text style={styles.noVehicle}>No vehicles saved. Go back and add one first.</Text>
         ) : (
           <View style={styles.pickerWrapper}>
+            {/* The value is the array index (0, 1, 2...) — we use index to look up the vehicle */}
             <Picker
               selectedValue={selectedVehicleIndex}
               onValueChange={(v) => setSelectedVehicleIndex(v)}
@@ -87,6 +108,7 @@ export default function RequestServiceScreen({ navigation, route }) {
           </View>
         )}
 
+        {/* Multi-line text input for describing the problem */}
         <Text style={styles.label}>Describe the Issue</Text>
         <TextInput
           style={styles.textArea}
@@ -94,17 +116,19 @@ export default function RequestServiceScreen({ navigation, route }) {
           placeholderTextColor="#aaa"
           value={issueDescription}
           onChangeText={setIssueDescription}
-          multiline
-          numberOfLines={5}
-          textAlignVertical="top"
+          multiline            // Allow multiple lines of text
+          numberOfLines={5}    // Initial height (Android)
+          textAlignVertical="top" // Android: start text at the top, not vertically centered
         />
 
+        {/* Reminder that GPS will be captured on submit */}
         <View style={styles.locationNote}>
           <Text style={styles.locationNoteText}>
             Your current GPS location will be shared with the mechanic when you submit.
           </Text>
         </View>
 
+        {/* Disable the button if submitting or if there are no vehicles */}
         <TouchableOpacity
           style={[styles.submitBtn, (submitting || vehicles.length === 0) && styles.disabled]}
           onPress={handleSubmit}
@@ -130,9 +154,7 @@ const styles = StyleSheet.create({
   inner: { paddingHorizontal: 20, paddingVertical: 24 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   title: { fontSize: 24, fontWeight: '800', color: '#111', marginBottom: 14 },
-  mechanicBadge: {
-    backgroundColor: '#e8f0fe', borderRadius: 8, padding: 10, marginBottom: 16,
-  },
+  mechanicBadge: { backgroundColor: '#e8f0fe', borderRadius: 8, padding: 10, marginBottom: 16 },
   mechanicBadgeText: { color: '#1a73e8', fontWeight: '600' },
   label: { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 6, marginTop: 16 },
   noVehicle: { color: '#d93025', fontSize: 14, marginBottom: 8 },

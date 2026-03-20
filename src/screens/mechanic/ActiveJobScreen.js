@@ -1,3 +1,8 @@
+// ActiveJobScreen.js — the mechanic's in-progress job screen.
+// The mechanic uses buttons here to advance the job through each status step.
+// GPS is tracked continuously and broadcast to the customer's map while the job is active.
+// After marking the job complete, the mechanic rates the customer.
+
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Alert,
@@ -17,6 +22,8 @@ import { submitRating } from '../../services/ratingService';
 import JobStatusBanner from '../../components/JobStatusBanner';
 import StarRating from '../../components/StarRating';
 
+// The complete sequence of statuses a job moves through.
+// The mechanic's button always advances to the NEXT status in this array.
 const STATUS_FLOW = [
   JOB_STATUS.ACCEPTED,
   JOB_STATUS.EN_ROUTE,
@@ -24,56 +31,74 @@ const STATUS_FLOW = [
   JOB_STATUS.COMPLETE,
 ];
 
+// Maps each status to the label for the "advance" button.
+// COMPLETE has no label because the job is done — no more advancing.
 const NEXT_LABEL = {
-  [JOB_STATUS.ACCEPTED]: 'Start Driving (En Route)',
-  [JOB_STATUS.EN_ROUTE]: 'Arrived — Start Job',
+  [JOB_STATUS.ACCEPTED]:    'Start Driving (En Route)',
+  [JOB_STATUS.EN_ROUTE]:    'Arrived — Start Job',
   [JOB_STATUS.IN_PROGRESS]: 'Mark Job Complete',
 };
 
 export default function ActiveJobScreen({ route, navigation }) {
   const { jobId } = route.params;
   const [job, setJob] = useState(null);
-  const [customerProfile, setCustomerProfile] = useState(null);
+  const [customerProfile, setCustomerProfile] = useState(null); // Customer's name
   const [stars, setStars] = useState(0);
   const [rated, setRated] = useState(false);
   const [submittingRating, setSubmittingRating] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
-  const watchRef = useRef(null);
+  const watchRef = useRef(null); // Holds the GPS subscription object
   const uid = auth.currentUser?.uid;
 
+  // Subscribe to live job updates — status changes from this screen update the customer's screen
   useEffect(() => {
     const unsub = subscribeToJob(jobId, setJob);
     return unsub;
   }, [jobId]);
 
+  // Fetch the customer's profile once their ID is available
   useEffect(() => {
     if (job?.customerId && !customerProfile) {
       getCurrentUserProfile(job.customerId).then(setCustomerProfile);
     }
   }, [job?.customerId]);
 
-  // Watch and broadcast mechanic GPS while job is active (not complete)
+  // Manage GPS tracking based on job status.
+  // Start watching when the job is active, stop when it's complete.
   useEffect(() => {
     if (!job || job.status === JOB_STATUS.COMPLETE) {
+      // Job is done — stop broadcasting GPS
       watchRef.current?.remove?.();
       watchRef.current = null;
       return;
     }
-    if (!watchRef.current) {
-      watchPosition((loc) => updateMechanicLocationOnJob(jobId, loc).catch(() => {}))
-        .then((sub) => { watchRef.current = sub; })
-        .catch(() => {});
-    }
-    return () => { watchRef.current?.remove?.(); watchRef.current = null; };
-  }, [job?.status]);
 
+    if (!watchRef.current) {
+      // Start GPS — every 10 seconds, write the mechanic's position to the job document.
+      // The customer's TrackJobScreen receives this via its onSnapshot listener and
+      // moves the green pin on their map.
+      watchPosition((loc) =>
+        updateMechanicLocationOnJob(jobId, loc).catch(() => {})
+      )
+        .then((sub) => { watchRef.current = sub; })
+        .catch(() => {}); // Silently fail if GPS is unavailable
+    }
+
+    // Stop GPS if the screen unmounts (e.g. navigating away)
+    return () => { watchRef.current?.remove?.(); watchRef.current = null; };
+  }, [job?.status]); // Re-evaluate whenever the status changes
+
+  // Advance the job to the next status in STATUS_FLOW
   async function handleNextStatus() {
     const currentIdx = STATUS_FLOW.indexOf(job.status);
+    // Guard: don't go past the end of the array
     if (currentIdx < 0 || currentIdx >= STATUS_FLOW.length - 1) return;
     const nextStatus = STATUS_FLOW[currentIdx + 1];
     setUpdatingStatus(true);
     try {
       await updateJobStatus(jobId, nextStatus);
+      // The Firestore listener (subscribeToJob above) will receive the update
+      // and re-render the screen automatically — we don't need to manually update state.
     } catch (e) {
       Alert.alert('Error', e.message);
     } finally {
@@ -81,6 +106,7 @@ export default function ActiveJobScreen({ route, navigation }) {
     }
   }
 
+  // Submit a star rating for the customer and return to the home screen
   async function handleRateCustomer() {
     if (stars === 0) {
       Alert.alert('Rate the customer', 'Please select a star rating.');
@@ -91,7 +117,7 @@ export default function ActiveJobScreen({ route, navigation }) {
       await submitRating({
         jobId,
         fromUserId: uid,
-        toUserId: job.customerId,
+        toUserId: job.customerId, // The person being rated is the customer
         stars,
       });
       setRated(true);
@@ -109,12 +135,13 @@ export default function ActiveJobScreen({ route, navigation }) {
     return <View style={styles.center}><ActivityIndicator size="large" color="#1a73e8" /></View>;
   }
 
+  // Convert stored { lat, lng } to the { latitude, longitude } format MapView expects
   const customerCoord = job.customerLocation
     ? { latitude: job.customerLocation.lat, longitude: job.customerLocation.lng }
     : null;
 
   const isComplete = job.status === JOB_STATUS.COMPLETE;
-  const nextLabel = NEXT_LABEL[job.status];
+  const nextLabel = NEXT_LABEL[job.status]; // Will be undefined if job is complete
 
   return (
     <SafeAreaView style={styles.container}>
@@ -122,6 +149,7 @@ export default function ActiveJobScreen({ route, navigation }) {
         <Text style={styles.title}>Active Job</Text>
         <JobStatusBanner status={job.status} />
 
+        {/* Job details card */}
         <View style={styles.detailsCard}>
           <Text style={styles.cardTitle}>Customer & Vehicle</Text>
           {customerProfile && <Text style={styles.detail}>Customer: {customerProfile.name}</Text>}
@@ -131,6 +159,7 @@ export default function ActiveJobScreen({ route, navigation }) {
           <Text style={styles.detail}>Issue: {job.issueDescription}</Text>
         </View>
 
+        {/* Map showing the customer's location so the mechanic knows where to drive */}
         {customerCoord && (
           <MapView
             style={styles.map}
@@ -145,6 +174,7 @@ export default function ActiveJobScreen({ route, navigation }) {
           </MapView>
         )}
 
+        {/* "Next step" button — only shown while the job isn't complete */}
         {!isComplete && nextLabel && (
           <TouchableOpacity
             style={[styles.nextBtn, updatingStatus && styles.disabled]}
@@ -159,6 +189,7 @@ export default function ActiveJobScreen({ route, navigation }) {
           </TouchableOpacity>
         )}
 
+        {/* Rating form — shown after job is complete and before rating is submitted */}
         {isComplete && !rated && (
           <View style={styles.ratingCard}>
             <Text style={styles.ratingTitle}>Rate the customer</Text>
@@ -177,6 +208,7 @@ export default function ActiveJobScreen({ route, navigation }) {
           </View>
         )}
 
+        {/* After rating submitted, go back home */}
         {isComplete && rated && (
           <TouchableOpacity style={styles.homeBtn} onPress={() => navigation.navigate('MechanicHome')}>
             <Text style={styles.homeBtnText}>Back to Home</Text>
@@ -207,8 +239,7 @@ const styles = StyleSheet.create({
   nextBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   disabled: { opacity: 0.5 },
   ratingCard: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 20,
-    alignItems: 'center',
+    backgroundColor: '#fff', borderRadius: 12, padding: 20, alignItems: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.07, shadowRadius: 4, elevation: 2,
   },

@@ -1,3 +1,9 @@
+// MechanicHomeScreen.js — the mechanic's dashboard.
+// Contains an Online/Offline toggle, a live list of pending job requests,
+// and an "Active Job" banner if the mechanic is currently on a job.
+// When online, the mechanic's GPS is tracked and written to Firestore
+// so customers can find them.
+
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
@@ -7,26 +13,31 @@ import { auth } from '../../config/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { getCurrentUserProfile, logout } from '../../services/authService';
-import { watchPosition } from '../../services/locationService';
+import { watchPosition, haversineDistance as calcDist } from '../../services/locationService';
 import {
   subscribeToPendingJobs,
   subscribeMechanicActiveJob,
   acceptJob,
 } from '../../services/jobService';
-import { haversineDistance as calcDist } from '../../services/locationService';
 import JobStatusBanner from '../../components/JobStatusBanner';
 
 export default function MechanicHomeScreen({ navigation }) {
   const [profile, setProfile] = useState(null);
-  const [isAvailable, setIsAvailable] = useState(false);
-  const [pendingJobs, setPendingJobs] = useState([]);
-  const [activeJob, setActiveJob] = useState(null);
-  const [currentLocation, setCurrentLocation] = useState(null);
+  const [isAvailable, setIsAvailable] = useState(false);  // Online/Offline toggle state
+  const [pendingJobs, setPendingJobs] = useState([]);      // All open requests from Firestore
+  const [activeJob, setActiveJob] = useState(null);        // The mechanic's current job (if any)
+  const [currentLocation, setCurrentLocation] = useState(null); // Mechanic's last known GPS
   const [loading, setLoading] = useState(true);
+
+  // useRef holds a value that persists across re-renders without causing a re-render.
+  // We use it to store the GPS subscription so we can cancel it later.
+  // (useState would re-render the screen every time we set it, which we don't want.)
   const watchRef = useRef(null);
+
   const uid = auth.currentUser?.uid;
 
   useEffect(() => {
+    // Load profile and set up real-time listeners when the screen first opens
     getCurrentUserProfile(uid).then((p) => {
       setProfile(p);
       setIsAvailable(p?.isAvailable || false);
@@ -34,32 +45,42 @@ export default function MechanicHomeScreen({ navigation }) {
       setLoading(false);
     });
 
+    // Listen for all pending (unaccepted) job requests
     const unsubPending = subscribeToPendingJobs(setPendingJobs);
+    // Listen for any job this mechanic has already accepted
     const unsubActive = subscribeMechanicActiveJob(uid, setActiveJob);
+
+    // Cleanup both listeners when the screen unmounts
     return () => { unsubPending(); unsubActive(); };
   }, [uid]);
 
-  // Start/stop GPS watching based on availability
+  // This effect starts or stops GPS tracking based on the availability toggle
   useEffect(() => {
     if (isAvailable) {
+      // Start watching GPS — the callback fires every 10 seconds or 10 meters of movement
       watchPosition((loc) => {
-        setCurrentLocation(loc);
+        setCurrentLocation(loc); // Update local state for distance calculations
+        // Write the new position to Firestore so customers can see this mechanic in search results
         updateDoc(doc(db, 'users', uid), { location: loc }).catch(() => {});
       })
-        .then((sub) => { watchRef.current = sub; })
+        .then((sub) => { watchRef.current = sub; }) // Save the subscription for cleanup
         .catch(() => Alert.alert('Location Error', 'Could not access location. Enable GPS and try again.'));
     } else {
-      watchRef.current?.remove?.();
+      // Stop tracking when going offline
+      watchRef.current?.remove?.(); // .remove() cancels the Expo location subscription
       watchRef.current = null;
     }
+    // Cleanup: stop GPS if the component unmounts while online
     return () => watchRef.current?.remove?.();
-  }, [isAvailable]);
+  }, [isAvailable]); // Re-run whenever the toggle changes
 
   async function toggleAvailability(value) {
     setIsAvailable(value);
+    // Also persist the availability in Firestore so the customer search query finds them
     await updateDoc(doc(db, 'users', uid), { isAvailable: value });
   }
 
+  // Called when the mechanic taps "View & Accept" on a job card
   async function handleAccept(job) {
     Alert.alert(
       'Accept Job?',
@@ -70,7 +91,9 @@ export default function MechanicHomeScreen({ navigation }) {
           text: 'Accept',
           onPress: async () => {
             try {
+              // Mark the job as accepted and assign this mechanic's ID to it
               await acceptJob(job.id, uid);
+              // Navigate to ActiveJobScreen to start working the job
               navigation.navigate('ActiveJob', { jobId: job.id });
             } catch (e) {
               Alert.alert('Error', e.message);
@@ -85,15 +108,17 @@ export default function MechanicHomeScreen({ navigation }) {
     return <View style={styles.center}><ActivityIndicator size="large" color="#1a73e8" /></View>;
   }
 
+  // Add calculated distance to each pending job so we can sort and display it
   const jobsWithDistance = pendingJobs.map((j) => ({
     ...j,
     distance: currentLocation && j.customerLocation
-      ? calcDist(currentLocation, j.customerLocation)
+      ? calcDist(currentLocation, j.customerLocation) // Haversine math
       : null,
-  })).sort((a, b) => (a.distance ?? 999) - (b.distance ?? 999));
+  })).sort((a, b) => (a.distance ?? 999) - (b.distance ?? 999)); // Nearest first
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.greeting}>Hi, {profile?.name?.split(' ')[0]}</Text>
         <TouchableOpacity onPress={logout}>
@@ -101,22 +126,26 @@ export default function MechanicHomeScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
+      {/* Online / Offline toggle */}
       <View style={styles.availabilityRow}>
         <Text style={styles.availabilityLabel}>
           {isAvailable ? 'You are Online' : 'You are Offline'}
         </Text>
+        {/* Switch is the native iOS/Android toggle component */}
         <Switch
           value={isAvailable}
           onValueChange={toggleAvailability}
-          trackColor={{ false: '#ddd', true: '#0f9d58' }}
+          trackColor={{ false: '#ddd', true: '#0f9d58' }} // Gray when off, green when on
           thumbColor={isAvailable ? '#fff' : '#bbb'}
         />
       </View>
 
+      {/* Link to edit the mechanic's public profile */}
       <TouchableOpacity style={styles.profileBtn} onPress={() => navigation.navigate('MechanicProfile')}>
         <Text style={styles.profileBtnText}>Edit Profile</Text>
       </TouchableOpacity>
 
+      {/* If the mechanic has an active job, show status and a button to return to it */}
       {activeJob && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Active Job</Text>
@@ -130,6 +159,7 @@ export default function MechanicHomeScreen({ navigation }) {
         </View>
       )}
 
+      {/* Pending jobs list — only shown when online and no active job */}
       {!activeJob && isAvailable && (
         <View style={{ flex: 1 }}>
           <Text style={styles.sectionTitle}>
@@ -157,6 +187,7 @@ export default function MechanicHomeScreen({ navigation }) {
         </View>
       )}
 
+      {/* Offline message */}
       {!isAvailable && (
         <View style={styles.offlineMsg}>
           <Text style={styles.offlineMsgText}>Toggle Online to start receiving job requests.</Text>
