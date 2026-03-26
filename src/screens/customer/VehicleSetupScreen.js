@@ -135,9 +135,10 @@ export default function VehicleSetupScreen({ navigation }) {
         </View>
 
         {/* ── MAKE DROPDOWN ─────────────────────────────────────────── */}
-        {/* The small spinner inside the label appears while the API call is in flight */}
-        <Text style={styles.label}>Make {loadingMakes && <ActivityIndicator size="small" color="#1a73e8" />}</Text>
-        {/* Greyed out (!year = no year selected yet) or enabled */}
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>Make</Text>
+          {loadingMakes && <ActivityIndicator size="small" color="#1a73e8" style={styles.labelSpinner} />}
+        </View>
         <View style={[styles.pickerWrapper, !year && styles.disabled]}>
           <Picker selectedValue={make} onValueChange={setMake} enabled={!!year && !loadingMakes}>
             <Picker.Item label={year ? 'Select make...' : 'Select year first'} value="" />
@@ -146,7 +147,10 @@ export default function VehicleSetupScreen({ navigation }) {
         </View>
 
         {/* ── MODEL DROPDOWN ────────────────────────────────────────── */}
-        <Text style={styles.label}>Model {loadingModels && <ActivityIndicator size="small" color="#1a73e8" />}</Text>
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>Model</Text>
+          {loadingModels && <ActivityIndicator size="small" color="#1a73e8" style={styles.labelSpinner} />}
+        </View>
         <View style={[styles.pickerWrapper, !make && styles.disabled]}>
           <Picker selectedValue={model} onValueChange={setModel} enabled={!!make && !loadingModels}>
             <Picker.Item label={make ? 'Select model...' : 'Select make first'} value="" />
@@ -155,7 +159,10 @@ export default function VehicleSetupScreen({ navigation }) {
         </View>
 
         {/* ── ENGINE/TRIM DROPDOWN ───────────────────────────────────── */}
-        <Text style={styles.label}>Engine / Trim {loadingTrims && <ActivityIndicator size="small" color="#1a73e8" />}</Text>
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>Engine / Trim</Text>
+          {loadingTrims && <ActivityIndicator size="small" color="#1a73e8" style={styles.labelSpinner} />}
+        </View>
         <View style={[styles.pickerWrapper, !model && styles.disabled]}>
           <Picker selectedValue={trim} onValueChange={setTrim} enabled={!!model && !loadingTrims}>
             <Picker.Item label={model ? 'Select engine/trim...' : 'Select model first'} value="" />
@@ -183,7 +190,9 @@ const styles = StyleSheet.create({
   savedSection: { backgroundColor: '#e8f0fe', borderRadius: 10, padding: 14, marginBottom: 20 },
   savedTitle: { fontWeight: '700', color: '#1a73e8', marginBottom: 6 },
   savedItem: { color: '#333', marginBottom: 3 },
-  label: { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 4, marginTop: 12 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, marginBottom: 4 },
+  labelSpinner: { marginLeft: 8 },
+  label: { fontSize: 14, fontWeight: '600', color: '#444' },
   pickerWrapper: {
     borderWidth: 1.5, borderColor: '#ddd', borderRadius: 10,
     backgroundColor: '#fff', overflow: 'hidden',

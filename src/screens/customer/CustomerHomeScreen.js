@@ -29,14 +29,18 @@ export default function CustomerHomeScreen({ navigation }) {
     getCurrentUserProfile(uid).then(setProfile);
 
     // Subscribe to any currently active job for this customer.
-    // The callback is called immediately with the current job (or null),
-    // then again whenever the job's status changes.
     const unsub = subscribeCustomerActiveJob(uid, setActiveJob);
-
-    // Return the unsubscribe function so React cleans it up when we leave this screen.
-    // Without this cleanup, the listener would keep running in the background.
     return unsub;
   }, [uid]);
+
+  // Re-fetch profile whenever this screen comes back into focus
+  // (e.g. after returning from VehicleSetup with a newly added vehicle)
+  useEffect(() => {
+    const unsubFocus = navigation.addListener('focus', () => {
+      getCurrentUserProfile(uid).then(setProfile);
+    });
+    return unsubFocus;
+  }, [navigation, uid]);
 
   // Turn off the loading spinner once the profile has loaded
   useEffect(() => {
