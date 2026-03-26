@@ -47,6 +47,20 @@ export default function AppNavigator({ user }) {
   // !! converts a value to boolean (truthy → true, falsy → false).
   const [loadingRole, setLoadingRole] = useState(() => !!user);
 
+  function fetchRole(uid) {
+    setLoadingRole(true);
+    getDoc(doc(db, 'users', uid))
+      .then((snap) => {
+        if (snap.exists()) {
+          setRole(snap.data().role);
+        } else {
+          setRole('unassigned');
+        }
+      })
+      .catch(() => setRole('unassigned'))
+      .finally(() => setLoadingRole(false));
+  }
+
   useEffect(() => {
     // If the user logs out, clear the role and stop loading
     if (!user) {
@@ -54,22 +68,7 @@ export default function AppNavigator({ user }) {
       return;
     }
 
-    setLoadingRole(true);
-
-    // Look up the user's document in Firestore to find their role.
-    // doc(db, 'users', user.uid) = path: users/{uid}
-    getDoc(doc(db, 'users', user.uid))
-      .then((snap) => {
-        if (snap.exists()) {
-          // snap.data() returns the document's fields as a plain object
-          setRole(snap.data().role); // 'customer' or 'mechanic'
-        } else {
-          // No Firestore document found — new user who hasn't picked a role yet
-          setRole('unassigned');
-        }
-      })
-      .catch(() => setRole('unassigned')) // If Firestore fails, send them to role select
-      .finally(() => setLoadingRole(false)); // Always stop the spinner when done
+    fetchRole(user.uid);
   }, [user]); // Re-run this effect whenever `user` changes (login/logout)
 
   // Show a spinner while we're fetching the role from Firestore
@@ -96,7 +95,9 @@ export default function AppNavigator({ user }) {
         // ── LOGGED IN BUT NO ROLE ──────────────────────────────────────
         // After registration the user must pick Customer or Mechanic.
         // Once they pick, this navigator re-renders with the correct screens.
-        <Stack.Screen name="RoleSelect" component={RoleSelectScreen} />
+        <Stack.Screen name="RoleSelect">
+          {(props) => <RoleSelectScreen {...props} onRoleSet={() => fetchRole(user.uid)} />}
+        </Stack.Screen>
       ) : role === 'customer' ? (
         // ── CUSTOMER SCREENS ───────────────────────────────────────────
         // The first screen listed (CustomerHome) is the one shown by default.

@@ -9,25 +9,16 @@ import {
 import { auth } from '../../config/firebase';
 import { setUserRole, logout } from '../../services/authService';
 
-export default function RoleSelectScreen() {
+export default function RoleSelectScreen({ onRoleSet }) {
   const [loading, setLoading] = useState(false);
 
-  // Called when the user taps either card.
-  // `role` will be either 'customer' or 'mechanic'.
   async function handleSelect(role) {
     setLoading(true);
     try {
-      // auth.currentUser.uid is the unique ID Firebase assigned this user at registration
       await setUserRole(auth.currentUser.uid, role);
-
-      // After setUserRole() writes to Firestore, AppNavigator's useEffect will
-      // NOT automatically re-run because the `user` object itself didn't change.
-      // Instead, AppNavigator re-reads the role because onAuthStateChanged fires
-      // again after Firestore writes, causing a re-render that picks up the new role.
-      // Actually — the app re-renders because setUserRole updates Firestore, and
-      // AppNavigator will re-render when we navigate back or when auth refreshes.
-      // The simplest explanation: once the role is written, the navigator
-      // re-evaluates and shows the correct screen set automatically.
+      // Tell AppNavigator to re-fetch the role from Firestore so it can
+      // swap to the correct screen set (customer or mechanic).
+      onRoleSet();
     } catch (e) {
       Alert.alert('Error', e.message);
     } finally {
